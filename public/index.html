@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Chat App</title>
+    <link rel="stylesheet" href="/css/main.css" type="text/css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+    <div class="container">
+        <h1>The Chat App</h1>
+        <div class="content">
+            
+            <div class="username-modal">
+                <div class="username-div">
+                    <h1> Please choose a display name</h1>
+                    <form id="username-form">
+                        <input id="username" type="text"/>
+                        <input id="username-submit" type="submit" value="OK"/>
+                    </form>
+                    <p class="username-check"></p>
+                </div>
+            </div>
+            
+            <div class="chat-box">
+                <div class="chat-users">
+                    <ul class="users">
+                        <!--<li>Test User</li>-->
+                        <!--<li>Test User 2</li>-->
+                    </ul>
+                </div>
+                <div class="chat-main">
+                    <div class="chat-room">
+                        <h3 class="status">Connecting...</h3>
+                        <div class="chat-messages">
+                            <ul class="messages">
+                                <!--<li class="connect"><span class="user">Eric</span> joined the room</li>-->
+                                <!--<li class="message"><span class="user">Eric</span> Hey what is up?</li>-->
+                                <!--<li class="system"><span class="system-user">Eric</span> Hey what is up?</li>-->
+
+                            </ul>
+                            
+                        </div>
+                    </div>
+                    <div class="chat-submit">
+                        <form id="send-message">
+                            <input id="send-input" type="text" placeholder="Type your message here"/>
+                            <input type="submit" value="Send"/>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+<!-- Scripts -->
+<script type="text/javascript" src="/socket.io/socket.io.js"></script>
+<script src="https://code.jquery.com/jquery-2.2.4.min.js" integrity="sha256-BbhdlvQf/xTY9gja0Dq3HiwQF8LaCRTXxZKRutelT44=" crossorigin="anonymous"></script>
+<script>
+    /*global io*/
+    /*global $*/
+    $('#send-message')[0].setAttribute('autocomplete', 'off');
+    $('#username-form')[0].setAttribute('autocomplete', 'off');
+    
+    // Client username
+    var username = null;
+    
+    // current list of clients connected stored locally
+    // No need to constantly request list from server?
+    var user_list = [];
+    
+    //connect to server using socket.io 
+    var socket = io.connect('https://warm-wave-73672.herokuapp.com');
+    
+    // store chat div for readability 
+    var chat = $(".messages");
+    
+    
+    var disconnect = false;
+    
+    // Auto scroll to bottom of div
+    scroll();
+    
+    socket.on("connect", function(){
+        $(".status").text("Connected to the Chat App");
+    })
+    
+    socket.on("disconnect", function() {
+        $(".status").text("Disconnected/Lost connection from server, try again later.");
+        var disconnect = true;
+        io.close();
+    });
+    
+    socket.on("username", function(data) {
+        var checkDiv = $(".username-check");
+        if(data === "Taken") {
+            checkDiv.text("Username taken, try again");
+        }
+        else {
+            user_list = data;
+            updateUsers();
+            $(".username-modal").hide();
+            message({ username: username }, "join");
+        }
+    })
+    
+    socket.on("join", function(data) {
+        user_list.push(data);
+        updateUsers();
+        message({username: data }, "join");
+        
+    })
+    
+    socket.on("left", function(data) {
+        var index = user_list.indexOf(data);
+        if(index != -1)
+            user_list.splice(index, 1);
+        
+        updateUsers();
+        message({username: data }, "left");
+    })
+    
+    socket.on("messages", function(data) {
+        message(data, "message");
+    })
+    
+    socket.on("system", function(data) {
+        message(data, "system");
+    })
+    
+    $('#send-message').submit(function(e){
+        e.preventDefault();
+        var msg = $("#send-input").val();
+        socket.emit('messages', msg);
+        $("#send-input").val("");
+        var msgData = { username: username, msg: msg };
+        message(msgData, "message");
+        
+    });
+    
+    $('#username-form').submit(function(e){
+        e.preventDefault();
+        $(".username-check").text("");
+        username = $("#username").val();
+        if (username == "") {
+            $(".username-check").text("A valid username is required.");
+            return;
+        }
+        if (username.length < 3) {
+            $(".username-check").text("Username requires more than 2 characters.");
+            return;
+        }
+        if (username.length > 13) {
+            $(".username-check").text("Username less than 13 characters");
+            return;
+        }
+        
+        if(username !== null) {
+            socket.emit("username", username);  
+        }
+
+    });
+    
+    function updateUsers() {
+        var list = $(".users").html("");
+        for (var index in user_list) {
+            var userLi = $("<li>"+user_list[index]+"</li>");
+            list.append(userLi);
+        }
+    }
+    
+    function scroll() {
+        var div = $(".chat-messages");
+        div.scrollTop(div[0].scrollHeight);
+    }
+    
+    function message(data, type) {
+        var user = data.username;
+        if (type == "message") {
+            var msg = $("<li class='message'></li>");
+            msg.append("<span class='user'>" + user + "</span>")
+            msg.append(" " + data.msg);
+            chat.append(msg);
+        }
+        else if (type == "join") {
+            var msg = $("<li class='connect'></li>");
+            msg.append("<span class='user'>" + user + "</span>")
+            msg.append(" joined the room.");
+            chat.append(msg);
+        }
+        else if (type == "left") {
+            var msg = $("<li class='connect'></li>");
+            msg.append("<span class='user'>" + user + "</span>")
+            msg.append(" left the room.");
+            chat.append(msg);
+        }
+        else if (type == "system") {
+            var msg = $("<li class='system'></li>");
+            msg.append("<span class='system-user'>" + user + "</span>")
+            msg.append(" " + data.msg);
+            chat.append(msg);
+        }
+        scroll();
+    }
+    
+
+
+</script>
+</body>
+</html>
